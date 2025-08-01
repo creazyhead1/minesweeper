@@ -2,267 +2,247 @@ import pygame
 import random
 import os
 
-# --- CONFIGURAÇÕES INICIAIS ---
-# Tamanho da janela da aplicação
-largura_janela = 800
-altura_janela = 700
+# --- INITIAL SETTINGS ---
+window_width = 800
+window_height = 700
 
-# Centraliza a janela na tela (funciona em PC)
+# Center the window on screen
 os.environ['SDL_VIDEO_CENTERED'] = '1'
 
-# Cores utilizadas no jogo
-cor_fundo = (50, 50, 200)
-cor_grade = (180, 180, 180)
-cor_texto = (0, 0, 0)
-cor_revelada = (220, 220, 220)
-cor_borda = (30, 30, 150)
-cor_sombra = (0, 0, 0, 100)
-cor_botao = (200, 200, 200)
-cor_botao_hover = (170, 170, 170)
+# Colors used in the game
+background_color = (50, 50, 200)
+grid_color = (180, 180, 180)
+text_color = (0, 0, 0)
+revealed_color = (220, 220, 220)
+border_color = (30, 30, 150)
+shadow_color = (0, 0, 0, 100)
+button_color = (200, 200, 200)
+button_hover_color = (170, 170, 170)
 
-# Inicializa o Pygame e cria a janela principal
+# Initialize Pygame and create the main window
 pygame.init()
-tela = pygame.display.set_mode((largura_janela, altura_janela))
-pygame.display.set_caption("Campo Minado")
-fonte = pygame.font.SysFont('Arial', 24)
+screen = pygame.display.set_mode((window_width, window_height))
+pygame.display.set_caption("Minesweeper")
+font = pygame.font.SysFont('Arial', 24)
 
-# Matrizes principais do jogo: tabuleiro (minas e números), visível (revelado) e bandeiras
-tabuleiro = []
-visivel = []
-bandeiras = []
+# Main game matrices
+board = []
+visible = []
+flags = []
 
-# Estado inicial do jogo (inicio, dificuldade, jogo)
-estado_de_jogo = "inicio"
+# Game state (start, difficulty, game)
+game_state = "start"
 
-# Configurações das dificuldades disponíveis no jogo
-dificuldades = {
-    "Facil": {"linhas": 8, "colunas": 8, "minas": 10, "tamanho": 30},
-    "Medio": {"linhas": 16, "colunas": 16, "minas": 40, "tamanho": 30},
-    "Dificil": {"linhas": 24, "colunas": 24, "minas": 99, "tamanho": 23}
+# Difficulty settings
+difficulties = {
+    "Easy": {"rows": 8, "cols": 8, "mines": 10, "cell_size": 30},
+    "Medium": {"rows": 16, "cols": 16, "mines": 40, "cell_size": 30},
+    "Hard": {"rows": 24, "cols": 24, "mines": 99, "cell_size": 23}
 }
 
-# Variáveis globais do jogo (dimensões, offsets, estados)
-linhas, colunas, minas = 0, 0, 0
-tamanho_celula = 30
-largura_tabuleiro, altura_tabuleiro = 0, 0
+# Global variables
+rows, cols, mines = 0, 0, 0
+cell_size = 30
+board_width, board_height = 0, 0
 offset_x, offset_y = 0, 0
-game_over, vitoria = False, False
-tempo_inicial = 0
-tempo_decorrido = 0
+game_over, victory = False, False
+start_time = 0
+elapsed_time = 0
 
-# --- FUNÇÕES AUXILIARES ---
-def desenhar_botao(texto, x, y, largura, altura, cor_fundo, cor_texto):
-    """Desenha um botão na tela e retorna seu retângulo para detecção de clique"""
+# --- HELPER FUNCTIONS ---
+def draw_button(text, x, y, width, height, bg_color, fg_color):
+    """Draws a button and returns its rect for click detection"""
     mouse_pos = pygame.mouse.get_pos()
-    botao_rect = pygame.Rect(x, y, largura, altura)
-    cor_atual = cor_botao_hover if botao_rect.collidepoint(mouse_pos) else cor_fundo
-    pygame.draw.rect(tela, cor_atual, botao_rect)
-    pygame.draw.rect(tela, (0, 0, 0), botao_rect, 2)
-    texto_render = fonte.render(texto, True, cor_texto)
-    texto_rect = texto_render.get_rect(center=botao_rect.center)
-    tela.blit(texto_render, texto_rect)
-    return botao_rect
+    button_rect = pygame.Rect(x, y, width, height)
+    current_color = button_hover_color if button_rect.collidepoint(mouse_pos) else bg_color
+    pygame.draw.rect(screen, current_color, button_rect)
+    pygame.draw.rect(screen, (0, 0, 0), button_rect, 2)
+    text_render = font.render(text, True, fg_color)
+    text_rect = text_render.get_rect(center=button_rect.center)
+    screen.blit(text_render, text_rect)
+    return button_rect
 
-def gerar_tabuleiro():
-    """Gera o tabuleiro do jogo com minas e números indicativos"""
-    global tabuleiro
-    tabuleiro = [[0 for _ in range(colunas)] for _ in range(linhas)]
-    colocadas = 0
-    while colocadas < minas:
-        x = random.randint(0, colunas - 1)
-        y = random.randint(0, linhas - 1)
-        if tabuleiro[y][x] != "M":
-            tabuleiro[y][x] = "M"
-            colocadas += 1
-    for y in range(linhas):
-        for x in range(colunas):
-            if tabuleiro[y][x] == "M":
+def generate_board():
+    """Generates the game board with mines and numbers"""
+    global board
+    board = [[0 for _ in range(cols)] for _ in range(rows)]
+    placed = 0
+    while placed < mines:
+        x = random.randint(0, cols - 1)
+        y = random.randint(0, rows - 1)
+        if board[y][x] != "M":
+            board[y][x] = "M"
+            placed += 1
+    for y in range(rows):
+        for x in range(cols):
+            if board[y][x] == "M":
                 continue
-            contador = sum(
+            count = sum(
                 1 for dy in [-1, 0, 1] for dx in [-1, 0, 1]
-                if 0 <= y+dy < linhas and 0 <= x+dx < colunas and tabuleiro[y+dy][x+dx] == "M"
+                if 0 <= y+dy < rows and 0 <= x+dx < cols and board[y+dy][x+dx] == "M"
             )
-            tabuleiro[y][x] = contador
+            board[y][x] = count
 
-def inicializar_jogo():
-    """Inicializa as variáveis do jogo e gera tabuleiro para jogar"""
-    global visivel, bandeiras, largura_tabuleiro, altura_tabuleiro, offset_x, offset_y
-    global tempo_inicial, tempo_decorrido
-    global game_over, vitoria
-    tempo_inicial = pygame.time.get_ticks()
-    tempo_decorrido = 0
-    largura_tabuleiro = colunas * tamanho_celula
-    altura_tabuleiro = linhas * tamanho_celula
-    offset_x = (largura_janela - largura_tabuleiro) // 2
-    offset_y = (altura_janela - altura_tabuleiro) // 2 + 40
-    visivel = [[False]*colunas for _ in range(linhas)]
-    bandeiras = [[False]*colunas for _ in range(linhas)]
+def init_game():
+    """Initializes game variables and generates board"""
+    global visible, flags, board_width, board_height, offset_x, offset_y
+    global start_time, elapsed_time
+    global game_over, victory
+    start_time = pygame.time.get_ticks()
+    elapsed_time = 0
+    board_width = cols * cell_size
+    board_height = rows * cell_size
+    offset_x = (window_width - board_width) // 2
+    offset_y = (window_height - board_height) // 2 + 40
+    visible = [[False]*cols for _ in range(rows)]
+    flags = [[False]*cols for _ in range(rows)]
     game_over = False
-    vitoria = False
-    gerar_tabuleiro()
+    victory = False
+    generate_board()
 
-def revelar_vazios(y, x):
-    """Revela células vazias recursivamente"""
-    if not (0 <= y < linhas and 0 <= x < colunas) or visivel[y][x] or bandeiras[y][x]:
+def reveal_zeros(y, x):
+    """Reveals empty cells recursively"""
+    if not (0 <= y < rows and 0 <= x < cols) or visible[y][x] or flags[y][x]:
         return
-    visivel[y][x] = True
-    if tabuleiro[y][x] == 0:
+    visible[y][x] = True
+    if board[y][x] == 0:
         for dy in [-1, 0, 1]:
             for dx in [-1, 0, 1]:
                 if dx != 0 or dy != 0:
-                    revelar_vazios(y + dy, x + dx)
+                    reveal_zeros(y + dy, x + dx)
 
-def verificar_vitoria():
-    """Verifica se o jogador venceu"""
+def check_victory():
+    """Checks if player won"""
     return all(
-        tabuleiro[y][x] == "M" or visivel[y][x]
-        for y in range(linhas) for x in range(colunas)
+        board[y][x] == "M" or visible[y][x]
+        for y in range(rows) for x in range(cols)
     )
 
-def contador_de_bandeiras():
-    """Conta quantas bandeiras foram colocadas"""
-    return sum(bandeiras[y][x] for y in range(linhas) for x in range(colunas))
+def count_flags():
+    """Counts the number of placed flags"""
+    return sum(flags[y][x] for y in range(rows) for x in range(cols))
 
-def reiniciar_jogo():
-    """Reinicia o jogo mantendo a mesma dificuldade"""
-    inicializar_jogo()
+def restart_game():
+    """Restarts game with same difficulty"""
+    init_game()
 
-# --- LOOP PRINCIPAL DO JOGO ---
-rodando = True
-while rodando:
-    for evento in pygame.event.get():
-        if evento.type == pygame.QUIT:
-            rodando = False
-        elif evento.type == pygame.MOUSEBUTTONDOWN:
+# --- MAIN GAME LOOP ---
+running = True
+while running:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+        elif event.type == pygame.MOUSEBUTTONDOWN:
             mx, my = pygame.mouse.get_pos()
-            
-            # Tela inicial
-            if estado_de_jogo == "inicio":
-                if desenhar_botao("START", largura_janela//2 - 100, altura_janela//2 - 25, 200, 50, cor_botao, cor_texto).collidepoint(mx, my):
-                    estado_de_jogo = "dificuldade"
-            
-            # Tela de seleção de dificuldade
-            elif estado_de_jogo == "dificuldade":
-                for i, nome in enumerate(["Fácil", "Médio", "Difícil"]):
-                    if desenhar_botao(nome, largura_janela//2 - 100, altura_janela//2 - 90 + i*70, 200, 50, cor_botao, cor_texto).collidepoint(mx, my):
-                        d = dificuldades[nome.replace('á', 'a').replace('é', 'e').replace('í', 'i')]
-                        linhas, colunas, minas = d["linhas"], d["colunas"], d["minas"]
-                        tamanho_celula = d["tamanho"]
-                        inicializar_jogo()
-                        estado_de_jogo = "jogo"
-            
-            # Tela do jogo
-            elif estado_de_jogo == "jogo":
-                # Verifica clique nos botões fixos (superior direito)
-                botao_largura = 100
-                botao_altura = 30
-                espaco_entre_botoes = 10
-                
-                # Posições fixas no canto superior direito
-                botao_menu_x = largura_janela - botao_largura - 20
-                botao_menu_y = 20
-                botao_reiniciar_x = botao_menu_x
-                botao_reiniciar_y = botao_menu_y + botao_altura + espaco_entre_botoes
-                
-                # Verifica clique nos botões
-                if botao_reiniciar_x <= mx <= botao_reiniciar_x + botao_largura and botao_reiniciar_y <= my <= botao_reiniciar_y + botao_altura:
-                    reiniciar_jogo()
-                elif botao_menu_x <= mx <= botao_menu_x + botao_largura and botao_menu_y <= my <= botao_menu_y + botao_altura:
-                    estado_de_jogo = "dificuldade"
-                
-                # Verifica clique no tabuleiro (se não for game over)
+
+            if game_state == "start":
+                if draw_button("START", window_width//2 - 100, window_height//2 - 25, 200, 50, button_color, text_color).collidepoint(mx, my):
+                    game_state = "difficulty"
+
+            elif game_state == "difficulty":
+                for i, name in enumerate(["Easy", "Medium", "Hard"]):
+                    if draw_button(name, window_width//2 - 100, window_height//2 - 90 + i*70, 200, 50, button_color, text_color).collidepoint(mx, my):
+                        d = difficulties[name]
+                        rows, cols, mines = d["rows"], d["cols"], d["mines"]
+                        cell_size = d["cell_size"]
+                        init_game()
+                        game_state = "game"
+
+            elif game_state == "game":
+                btn_width = 100
+                btn_height = 30
+                gap = 10
+
+                menu_btn_x = window_width - btn_width - 20
+                menu_btn_y = 20
+                restart_btn_x = menu_btn_x
+                restart_btn_y = menu_btn_y + btn_height + gap
+
+                if restart_btn_x <= mx <= restart_btn_x + btn_width and restart_btn_y <= my <= restart_btn_y + btn_height:
+                    restart_game()
+                elif menu_btn_x <= mx <= menu_btn_x + btn_width and menu_btn_y <= my <= menu_btn_y + btn_height:
+                    game_state = "difficulty"
                 elif not game_over:
-                    cx = (mx - offset_x) // tamanho_celula
-                    cy = (my - offset_y) // tamanho_celula
-                    if 0 <= cx < colunas and 0 <= cy < linhas:
-                        if evento.button == 1 and not bandeiras[cy][cx]:  # Clique esquerdo
-                            if tabuleiro[cy][cx] == "M":
-                                visivel[cy][cx] = True
+                    cx = (mx - offset_x) // cell_size
+                    cy = (my - offset_y) // cell_size
+                    if 0 <= cx < cols and 0 <= cy < rows:
+                        if event.button == 1 and not flags[cy][cx]:  # Left click
+                            if board[cy][cx] == "M":
+                                visible[cy][cx] = True
                                 game_over = True
-                                for y in range(linhas):
-                                    for x in range(colunas):
-                                        if tabuleiro[y][x] == "M":
-                                            visivel[y][x] = True
-                            elif tabuleiro[cy][cx] == 0:
-                                revelar_vazios(cy, cx)
+                                for y in range(rows):
+                                    for x in range(cols):
+                                        if board[y][x] == "M":
+                                            visible[y][x] = True
+                            elif board[cy][cx] == 0:
+                                reveal_zeros(cy, cx)
                             else:
-                                visivel[cy][cx] = True
-                            if verificar_vitoria():
-                                vitoria = True
+                                visible[cy][cx] = True
+                            if check_victory():
+                                victory = True
                                 game_over = True
-                        elif evento.button == 3 and not visivel[cy][cx]:  # Clique direito
-                            bandeiras[cy][cx] = not bandeiras[cy][cx]
+                        elif event.button == 3 and not visible[cy][cx]:  # Right click
+                            flags[cy][cx] = not flags[cy][cx]
 
-    # --- RENDERIZAÇÃO ---
-    tela.fill(cor_fundo)
+    # --- RENDERING ---
+    screen.fill(background_color)
 
-    # Tela inicial
-    if estado_de_jogo == "inicio":
-        desenhar_botao("START", largura_janela//2 - 100, altura_janela//2 - 25, 200, 50, cor_botao, cor_texto)
+    if game_state == "start":
+        draw_button("START", window_width//2 - 100, window_height//2 - 25, 200, 50, button_color, text_color)
 
-    # Tela de seleção de dificuldade
-    elif estado_de_jogo == "dificuldade":
-        for i, nome in enumerate(["Fácil", "Médio", "Difícil"]):
-            desenhar_botao(nome, largura_janela//2 - 100, altura_janela//2 - 90 + i*70, 200, 50, cor_botao, cor_texto)
+    elif game_state == "difficulty":
+        for i, name in enumerate(["Easy", "Medium", "Hard"]):
+            draw_button(name, window_width//2 - 100, window_height//2 - 90 + i*70, 200, 50, button_color, text_color)
 
-    # Tela do jogo
-    elif estado_de_jogo == "jogo":
-        # Desenha o tabuleiro
-        for y in range(linhas):
-            for x in range(colunas):
-                rect = pygame.Rect(offset_x + x*tamanho_celula, offset_y + y*tamanho_celula, tamanho_celula, tamanho_celula)
-                pygame.draw.rect(tela, cor_borda, rect)
+    elif game_state == "game":
+        for y in range(rows):
+            for x in range(cols):
+                rect = pygame.Rect(offset_x + x*cell_size, offset_y + y*cell_size, cell_size, cell_size)
+                pygame.draw.rect(screen, border_color, rect)
 
-                # Célula revelada
-                if visivel[y][x]:
-                    pygame.draw.rect(tela, cor_revelada, rect.inflate(-2, -2))
-                    if tabuleiro[y][x] == "M":
-                        pygame.draw.circle(tela, (255, 0, 0), rect.center, tamanho_celula//3)
-                    elif tabuleiro[y][x] > 0:
-                        texto_celula = fonte.render(str(tabuleiro[y][x]), True, cor_texto)
-                        texto_rect = texto_celula.get_rect(center=rect.center)
-                        tela.blit(texto_celula, texto_rect)
-
-                # Célula não revelada
+                if visible[y][x]:
+                    pygame.draw.rect(screen, revealed_color, rect.inflate(-2, -2))
+                    if board[y][x] == "M":
+                        pygame.draw.circle(screen, (255, 0, 0), rect.center, cell_size//3)
+                    elif board[y][x] > 0:
+                        cell_text = font.render(str(board[y][x]), True, text_color)
+                        text_rect = cell_text.get_rect(center=rect.center)
+                        screen.blit(cell_text, text_rect)
                 else:
-                    pygame.draw.rect(tela, cor_grade, rect.inflate(-2, -2))
-                    if bandeiras[y][x]:
-                        pygame.draw.line(tela, (255, 0, 0), (rect.left + 6, rect.top + 6), 
+                    pygame.draw.rect(screen, grid_color, rect.inflate(-2, -2))
+                    if flags[y][x]:
+                        pygame.draw.line(screen, (255, 0, 0), (rect.left + 6, rect.top + 6), 
                                          (rect.right - 6, rect.bottom - 6), 3)
-                        pygame.draw.line(tela, (255, 0, 0), (rect.right - 6, rect.top + 6), 
+                        pygame.draw.line(screen, (255, 0, 0), (rect.right - 6, rect.top + 6), 
                                          (rect.left + 6, rect.bottom - 6), 3)
 
-        # Atualiza o tempo (somente se o jogo não acabou)
         if not game_over:
-            tempo_decorrido = (pygame.time.get_ticks() - tempo_inicial) // 1000
+            elapsed_time = (pygame.time.get_ticks() - start_time) // 1000
 
-        # Exibe informações no topo da tela
-        tempo_texto = fonte.render(f"Tempo: {tempo_decorrido}s", True, (255, 255, 255))
-        tela.blit(tempo_texto, (10, 10))
+        time_text = font.render(f"Time: {elapsed_time}s", True, (255, 255, 255))
+        screen.blit(time_text, (10, 10))
 
-        bandeiras_restantes = minas - contador_de_bandeiras()
-        bandeiras_texto = fonte.render(f"Minas: {bandeiras_restantes}", True, (255, 255, 255))
-        tela.blit(bandeiras_texto, (10, 40))
+        remaining_flags = mines - count_flags()
+        flags_text = font.render(f"Mines: {remaining_flags}", True, (255, 255, 255))
+        screen.blit(flags_text, (10, 40))
 
-        # Desenha os botões fixos no canto superior direito
-        botao_largura = 100
-        botao_altura = 30
-        espaco_entre_botoes = 10
-        
-        botao_menu_x = largura_janela - botao_largura - 20
-        botao_menu_y = 20
-        botao_reiniciar_x = botao_menu_x
-        botao_reiniciar_y = botao_menu_y + botao_altura + espaco_entre_botoes
-        
-        desenhar_botao("Menu", botao_menu_x, botao_menu_y, botao_largura, botao_altura, cor_botao, cor_texto)
-        desenhar_botao("Reiniciar", botao_reiniciar_x, botao_reiniciar_y, botao_largura, botao_altura, cor_botao, cor_texto)
+        btn_width = 100
+        btn_height = 30
+        gap = 10
 
-        # Mensagem de fim de jogo
+        menu_btn_x = window_width - btn_width - 20
+        menu_btn_y = 20
+        restart_btn_x = menu_btn_x
+        restart_btn_y = menu_btn_y + btn_height + gap
+
+        draw_button("Menu", menu_btn_x, menu_btn_y, btn_width, btn_height, button_color, text_color)
+        draw_button("Restart", restart_btn_x, restart_btn_y, btn_width, btn_height, button_color, text_color)
+
         if game_over:
-            mensagem = "Você ganhou!" if vitoria else "Você perdeu!"
-            texto_mensagem = fonte.render(mensagem, True, (255, 255, 255))
-            ret_texto = texto_mensagem.get_rect(center=(largura_janela//2, 40))
-            tela.blit(texto_mensagem, ret_texto)
+            message = "You won!" if victory else "You lost!"
+            message_text = font.render(message, True, (255, 255, 255))
+            message_rect = message_text.get_rect(center=(window_width//2, 40))
+            screen.blit(message_text, message_rect)
 
     pygame.display.update()
 
